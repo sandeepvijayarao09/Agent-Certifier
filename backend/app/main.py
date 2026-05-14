@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import create_tables
-from app.api.routes import agents, tests, reports
+from app.api.routes import agents, tests, reports, stats
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.add_middleware(
 app.include_router(agents.router)
 app.include_router(tests.router)
 app.include_router(reports.router)
+app.include_router(stats.router)
 
 
 @app.get("/health")

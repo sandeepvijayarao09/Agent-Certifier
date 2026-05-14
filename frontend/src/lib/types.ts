@@ -104,6 +104,39 @@ export interface Report {
   skipped_tests: number;
 }
 
+export interface PlatformStats {
+  totals: {
+    agents: number;
+    tested: number;
+    certified: number;
+    not_certified: number;
+    running: number;
+    failed_runs: number;
+    total_test_executions: number;
+    pass_rate: number;
+  };
+  avg_score: number;
+  score_distribution: Record<string, number>;
+  certification_distribution: Record<CertificationLevel, number>;
+  language_distribution: Record<string, number>;
+  category_averages: Record<string, number>;
+  category_pass_rates: Record<string, {
+    passed: number; failed: number; warnings: number;
+    total: number; pass_rate: number;
+  }>;
+  top_failures: Array<{ test: string; count: number }>;
+  recent_agents: Array<{
+    id: string; name: string; language: string; status: string;
+    overall_score: number | null; certification_level: CertificationLevel | null;
+    created_at: string;
+  }>;
+  top_agents: Array<{
+    id: string; name: string; language: string;
+    overall_score: number; certification_level: CertificationLevel;
+  }>;
+  test_summary: { passed: number; failed: number; warnings: number; total: number };
+}
+
 export interface Certificate {
   agent_id: string;
   agent_name: string;

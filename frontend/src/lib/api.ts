@@ -5,6 +5,7 @@ import type {
   AgentStatusResponse,
   Report,
   Certificate,
+  PlatformStats,
 } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -54,6 +55,9 @@ export const api = {
 
   getResults: (id: string): Promise<TestResultsResponse> =>
     fetchJson<TestResultsResponse>(`/api/agents/${id}/results`),
+
+  // Stats
+  getStats: (): Promise<PlatformStats> => fetchJson<PlatformStats>('/api/stats'),
 
   // Reports
   getReport: (id: string): Promise<Report> =>
