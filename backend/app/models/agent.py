@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Text, DateTime, Enum as SAEnum
+from sqlalchemy import Column, String, Integer, Float, Text, DateTime, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 import enum
@@ -25,5 +25,8 @@ class Agent(Base):
     status = Column(SAEnum(AgentStatus), default=AgentStatus.pending, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    overall_score = Column(Float, nullable=True)
+    certification_level = Column(String(20), nullable=True)
 
     test_results = relationship("TestResult", back_populates="agent", cascade="all, delete-orphan")
