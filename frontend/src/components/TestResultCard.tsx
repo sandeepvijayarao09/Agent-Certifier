@@ -72,9 +72,9 @@ export function TestResultCard({ result }: TestResultCardProps) {
 
       {expanded && (
         <div className="px-4 pb-4 pt-1 border-t border-slate-700/30">
-          {details?.message && (
+          {details?.message ? (
             <p className="text-sm text-slate-300 mb-3">{String(details.message)}</p>
-          )}
+          ) : null}
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
             <span className="text-slate-500">Duration:</span>
