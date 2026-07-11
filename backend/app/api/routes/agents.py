@@ -1,6 +1,6 @@
 import os
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
@@ -8,10 +8,19 @@ from datetime import datetime
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.security import (
+    SlidingWindowRateLimiter,
+    enforce_rate_limit,
+    sanitize_filename,
+)
 from app.models.agent import Agent, AgentStatus
 from app.models.test_result import TestResult
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+upload_limiter = SlidingWindowRateLimiter(
+    settings.upload_rate_limit, settings.rate_limit_window_seconds
+)
 
 LANGUAGE_MAP = {
     ".py": "Python",
@@ -72,10 +81,14 @@ async def build_agent_response(agent: Agent, db: AsyncSession) -> dict:
     )
     test_results = result.scalars().all()
 
-    overall_score = None
-    certification_level = None
+    overall_score = agent.overall_score
+    certification_level = agent.certification_level
 
-    if test_results and agent.status == AgentStatus.completed:
+    if (
+        overall_score is None
+        and test_results
+        and agent.status == AgentStatus.completed
+    ):
         # Calculate weighted score
         weights = {
             "security": 0.30,
@@ -121,10 +134,13 @@ async def build_agent_response(agent: Agent, db: AsyncSession) -> dict:
 
 @router.post("/upload")
 async def upload_agent(
+    request: Request,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    filename = file.filename or "unknown"
+    enforce_rate_limit(upload_limiter, request)
+
+    filename = sanitize_filename(file.filename or "unknown")
     _, ext = os.path.splitext(filename.lower())
 
     if ext not in settings.allowed_extensions:
@@ -133,9 +149,32 @@ async def upload_agent(
             detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(settings.allowed_extensions)}",
         )
 
-    content = await file.read()
-    if len(content) > settings.max_upload_size:
-        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    max_mb = settings.max_upload_size // (1024 * 1024)
+    size_error = HTTPException(
+        status_code=413, detail=f"File too large (max {max_mb}MB)"
+    )
+
+    # Reject early on the declared length, then enforce while reading so an
+    # unbounded body is never fully buffered.
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > settings.max_upload_size + 4096:
+        raise size_error
+
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(64 * 1024):
+        total += len(chunk)
+        if total > settings.max_upload_size:
+            raise size_error
+        chunks.append(chunk)
+    content = b"".join(chunks)
+
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="File is empty")
+    if b"\x00" in content:
+        raise HTTPException(
+            status_code=400, detail="File appears to be binary, not source code"
+        )
 
     try:
         file_text = content.decode("utf-8")
@@ -146,7 +185,7 @@ async def upload_agent(
             raise HTTPException(status_code=400, detail="Could not decode file as text")
 
     language = detect_language(filename)
-    name = os.path.splitext(filename)[0]
+    name = os.path.splitext(filename)[0][:100]
 
     agent = Agent(
         name=name,

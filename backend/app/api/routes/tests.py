@@ -1,14 +1,21 @@
 import asyncio
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db, AsyncSessionLocal
+from app.core.config import settings
+from app.core.security import SlidingWindowRateLimiter, enforce_rate_limit
 from app.models.agent import Agent, AgentStatus
 from app.models.test_result import TestResult
 from app.services.orchestrator import TestOrchestrator
 
 router = APIRouter(prefix="/api/agents", tags=["tests"])
+
+run_limiter = SlidingWindowRateLimiter(
+    settings.run_rate_limit, settings.rate_limit_window_seconds
+)
 
 
 async def run_tests_background(agent_id: str):
@@ -38,23 +45,31 @@ async def run_tests_background(agent_id: str):
 @router.post("/{agent_id}/run")
 async def run_tests(
     agent_id: str,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
+    enforce_rate_limit(run_limiter, request)
+
     result = await db.execute(select(Agent).where(Agent.id == agent_id))
     agent = result.scalar_one_or_none()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     if agent.status == AgentStatus.running:
-        raise HTTPException(status_code=409, detail="Tests are already running for this agent")
+        # A run interrupted by a restart would leave the agent stuck in
+        # "running" forever; allow a re-run once it has clearly gone stale.
+        stale_after = timedelta(seconds=settings.stale_run_timeout_seconds)
+        if datetime.utcnow() - agent.updated_at < stale_after:
+            raise HTTPException(
+                status_code=409, detail="Tests are already running for this agent"
+            )
 
     # Clear previous results
     prev = await db.execute(select(TestResult).where(TestResult.agent_id == agent_id))
     for tr in prev.scalars().all():
         await db.delete(tr)
 
-    from datetime import datetime
     agent.status = AgentStatus.running
     agent.updated_at = datetime.utcnow()
     await db.commit()
