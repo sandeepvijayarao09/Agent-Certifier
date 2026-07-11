@@ -60,6 +60,7 @@ class TestOrchestrator:
         try:
             code = agent.file_content
             language = agent.language
+            category_scores: dict[str, list[float]] = {}
 
             for analyzer in self.analyzers:
                 # Run in thread pool to avoid blocking event loop
@@ -79,8 +80,22 @@ class TestOrchestrator:
                     )
                     tr.details = result.details
                     db.add(tr)
+                    if status != TestStatus.skip:
+                        category_scores.setdefault(analyzer.category, []).append(tr.score)
 
             await db.flush()
+
+            weighted = 0.0
+            total_weight = 0.0
+            for category, scores in category_scores.items():
+                weight = CATEGORY_WEIGHTS.get(category, 0)
+                if scores and weight:
+                    weighted += (sum(scores) / len(scores)) * weight
+                    total_weight += weight
+
+            overall = round(weighted / total_weight, 1) if total_weight else 0.0
+            agent.overall_score = overall
+            agent.certification_level = get_certification_level(overall)
             agent.status = AgentStatus.completed
             agent.updated_at = datetime.utcnow()
             await db.flush()
