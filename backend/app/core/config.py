@@ -14,6 +14,12 @@ class Settings(BaseSettings):
         ".cpp", ".cc", ".cs", ".php"
     ]
     certification_expiry_days: int = 365
+    # Hardening knobs
+    upload_rate_limit: int = 20          # uploads per client per window
+    run_rate_limit: int = 30             # test runs per client per window
+    rate_limit_window_seconds: int = 60
+    analyzer_timeout_seconds: int = 60   # per-category static analysis budget
+    stale_run_timeout_seconds: int = 600  # allow re-run if a run is stuck this long
 
     class Config:
         env_file = ".env"

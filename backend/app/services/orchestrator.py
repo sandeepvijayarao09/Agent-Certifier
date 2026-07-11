@@ -1,7 +1,9 @@
 import asyncio
+import logging
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.agent import Agent, AgentStatus
 from app.models.test_result import TestResult, TestStatus
 from app.services.analyzer.security import SecurityAnalyzer
@@ -63,10 +65,22 @@ class TestOrchestrator:
             category_scores: dict[str, list[float]] = {}
 
             for analyzer in self.analyzers:
-                # Run in thread pool to avoid blocking event loop
-                results = await asyncio.get_event_loop().run_in_executor(
-                    None, analyzer.analyze, code, language
-                )
+                # Run in thread pool to avoid blocking event loop; bound each
+                # category so a pathological input can't stall the whole run
+                try:
+                    results = await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            None, analyzer.analyze, code, language
+                        ),
+                        timeout=settings.analyzer_timeout_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    logging.getLogger(__name__).warning(
+                        "Analyzer %s timed out for agent %s",
+                        analyzer.category,
+                        agent.id,
+                    )
+                    results = []
 
                 for result in results:
                     status = STATUS_MAP.get(result.status, TestStatus.skip)

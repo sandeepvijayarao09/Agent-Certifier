@@ -74,8 +74,13 @@ class ReportGenerator:
                     "total": 0,
                 }
 
-        overall_score = round(weighted_total / total_weight, 1) if total_weight > 0 else 0.0
-        certification_level = get_certification_level(overall_score)
+        # Prefer the score the orchestrator persisted so every endpoint agrees
+        if agent.overall_score is not None:
+            overall_score = agent.overall_score
+            certification_level = agent.certification_level or get_certification_level(overall_score)
+        else:
+            overall_score = round(weighted_total / total_weight, 1) if total_weight > 0 else 0.0
+            certification_level = get_certification_level(overall_score)
 
         # Identify critical issues (failed tests)
         critical_issues = []
