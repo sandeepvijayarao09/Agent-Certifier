@@ -1,17 +1,32 @@
 import asyncio
 import logging
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.agent import Agent, AgentStatus
 from app.models.test_result import TestResult, TestStatus
+from app.services.analyzer.base import BaseAnalyzer, AnalysisResult
 from app.services.analyzer.security import SecurityAnalyzer
 from app.services.analyzer.stability import StabilityAnalyzer
 from app.services.analyzer.informatics import InformaticsAnalyzer
 from app.services.analyzer.performance import PerformanceAnalyzer
 from app.services.analyzer.compliance import ComplianceAnalyzer
 from app.services.analyzer.ethics import EthicsAnalyzer
+
+logger = logging.getLogger(__name__)
+
+
+def _run_analyzer(analyzer: BaseAnalyzer, code: str, language: str) -> List[AnalysisResult]:
+    """Module-level entry point executed inside a worker process.
+
+    Running analysis in a separate process (rather than a thread) means a
+    pathological input that triggers catastrophic regex backtracking can be
+    killed outright on timeout instead of pinning a CPU forever.
+    """
+    return analyzer.analyze(code, language)
 
 
 CATEGORY_WEIGHTS = {
@@ -53,6 +68,43 @@ class TestOrchestrator:
             ComplianceAnalyzer(),
             EthicsAnalyzer(),
         ]
+        self._executor: Optional[ProcessPoolExecutor] = None
+        self._use_processes = True
+
+    def _get_executor(self) -> Optional[ProcessPoolExecutor]:
+        """Return the worker-process pool, lazily created.
+
+        If a process pool can't be spawned in this environment we fall back to
+        the event loop's default thread pool (executor=None). Timeouts still
+        free the request path in that mode, but can't hard-kill the worker.
+        """
+        if self._executor is None and self._use_processes:
+            try:
+                self._executor = ProcessPoolExecutor(max_workers=1)
+            except Exception:
+                logger.warning(
+                    "ProcessPoolExecutor unavailable; falling back to thread pool"
+                )
+                self._use_processes = False
+        return self._executor
+
+    def _kill_executor(self) -> None:
+        """Forcibly terminate the current worker so a timed-out or crashed
+        analysis stops consuming CPU, then drop it so the next call spins up a
+        fresh pool. No-op when running on the shared thread pool."""
+        executor = self._executor
+        self._executor = None
+        if executor is None:
+            return
+        for proc in list(getattr(executor, "_processes", {}).values()):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
 
     async def run(self, agent: Agent, db: AsyncSession):
         agent.status = AgentStatus.running
@@ -63,23 +115,35 @@ class TestOrchestrator:
             code = agent.file_content
             language = agent.language
             category_scores: dict[str, list[float]] = {}
+            loop = asyncio.get_event_loop()
 
             for analyzer in self.analyzers:
-                # Run in thread pool to avoid blocking event loop; bound each
-                # category so a pathological input can't stall the whole run
+                # Run each category in a worker process and bound its runtime.
+                # On timeout the worker is killed outright (a cancelled thread
+                # would keep running), so a pathological ReDoS input can't
+                # stall the run or pin a CPU indefinitely.
                 try:
                     results = await asyncio.wait_for(
-                        asyncio.get_event_loop().run_in_executor(
-                            None, analyzer.analyze, code, language
+                        loop.run_in_executor(
+                            self._get_executor(), _run_analyzer, analyzer, code, language
                         ),
                         timeout=settings.analyzer_timeout_seconds,
                     )
                 except asyncio.TimeoutError:
-                    logging.getLogger(__name__).warning(
-                        "Analyzer %s timed out for agent %s",
+                    logger.warning(
+                        "Analyzer %s timed out for agent %s; terminating worker",
                         analyzer.category,
                         agent.id,
                     )
+                    self._kill_executor()
+                    results = []
+                except Exception:
+                    # e.g. a BrokenProcessPool if the worker died mid-run.
+                    # Skip this category rather than failing the whole run.
+                    logger.exception(
+                        "Analyzer %s failed for agent %s", analyzer.category, agent.id
+                    )
+                    self._kill_executor()
                     results = []
 
                 for result in results:
@@ -119,3 +183,5 @@ class TestOrchestrator:
             agent.updated_at = datetime.utcnow()
             await db.flush()
             raise
+        finally:
+            self._kill_executor()
