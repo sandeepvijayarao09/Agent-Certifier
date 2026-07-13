@@ -80,6 +80,11 @@ class TestOrchestrator:
         """
         if self._executor is None and self._use_processes:
             try:
+                # Use the default start method (fork on Linux) on purpose:
+                # spawn/forkserver re-import __main__, which under
+                # `uvicorn app.main:app` would re-trigger server startup in the
+                # worker. Analyzers only run pure, lock-free regex, so forking a
+                # worker from the threaded server process is safe here.
                 self._executor = ProcessPoolExecutor(max_workers=1)
             except Exception:
                 logger.warning(
@@ -96,7 +101,7 @@ class TestOrchestrator:
         self._executor = None
         if executor is None:
             return
-        for proc in list(getattr(executor, "_processes", {}).values()):
+        for proc in list((getattr(executor, "_processes", None) or {}).values()):
             try:
                 proc.terminate()
             except Exception:
@@ -115,7 +120,7 @@ class TestOrchestrator:
             code = agent.file_content
             language = agent.language
             category_scores: dict[str, list[float]] = {}
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             for analyzer in self.analyzers:
                 # Run each category in a worker process and bound its runtime.
@@ -171,7 +176,14 @@ class TestOrchestrator:
                     weighted += (sum(scores) / len(scores)) * weight
                     total_weight += weight
 
-            overall = round(weighted / total_weight, 1) if total_weight else 0.0
+            # No category produced a single scorable result: every analyzer
+            # timed out or crashed. That's an infrastructure failure, not a
+            # zero-quality agent, so fail the run instead of persisting a
+            # misleading 0.0 / NOT_CERTIFIED score.
+            if total_weight == 0:
+                raise RuntimeError("No analyzer produced results; run failed")
+
+            overall = round(weighted / total_weight, 1)
             agent.overall_score = overall
             agent.certification_level = get_certification_level(overall)
             agent.status = AgentStatus.completed
