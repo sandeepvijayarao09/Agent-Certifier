@@ -76,3 +76,18 @@ frameworks:
 | AIUC-1 | Attack Resistance, Data Protection, Operational Boundaries, Error Prevention |
 
 The per-test mapping lives in `backend/app/services/analyzer/standards.py`.
+
+## Agentic Governance
+
+When an uploaded file is agent/tool code (ADK, LangChain, LangGraph, CrewAI,
+AutoGen, MCP) or a JSON manifest (A2A Agent Card, MCP server config), the report
+adds an **Agentic Governance** section covering the OWASP Agentic controls the
+static source scan can't reach: **ASI02** tool misuse, **ASI03** identity &
+privilege, **ASI04** supply chain, **ASI07** inter-agent communication, and
+**LLM06** excessive agency. It flags things like a tool that shells out,
+wildcard scopes, unguarded agent-to-agent delegation, http:// (non-TLS) agent
+endpoints, and Agent Cards with no declared security scheme.
+
+This lane is **advisory** — it enriches Standards Coverage but does not change
+the weighted 60-test score, and it stays silent for non-agent code. It lives in
+`backend/app/services/analyzer/agentic.py`.

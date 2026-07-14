@@ -101,6 +101,16 @@ export interface ReportTestDetail {
   standards?: StandardRef[];
 }
 
+export interface AgenticFinding {
+  id: string;
+  title: string;
+  status: TestStatus;
+  score: number;
+  message: string;
+  evidence: string;
+  standards: StandardRef[];
+}
+
 export interface Report {
   agent_id: string;
   agent_name: string;
@@ -129,6 +139,7 @@ export interface Report {
   test_details: Record<string, ReportTestDetail[]>;
   standards_coverage: StandardCoverage[];
   frameworks: FrameworkCoverage[];
+  agentic_governance: AgenticFinding[];
   certification_valid_until: string;
   total_tests: number;
   passed_tests: number;
