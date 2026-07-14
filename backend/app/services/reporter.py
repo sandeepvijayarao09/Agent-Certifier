@@ -3,6 +3,7 @@ from typing import List
 from app.models.agent import Agent
 from app.models.test_result import TestResult
 from app.core.config import settings
+from app.services.analyzer.standards import TEST_STANDARDS, resolve_standard, standards_for
 
 
 CATEGORY_WEIGHTS = {
@@ -91,6 +92,7 @@ class ReportGenerator:
                     "test_name": tr.test_name,
                     "score": tr.score,
                     "details": tr.details,
+                    "standards": standards_for(tr.test_name),
                 })
 
         # Collect warnings
@@ -102,6 +104,7 @@ class ReportGenerator:
                     "test_name": tr.test_name,
                     "score": tr.score,
                     "details": tr.details,
+                    "standards": standards_for(tr.test_name),
                 })
 
         # Generate recommendations
@@ -118,9 +121,14 @@ class ReportGenerator:
                     "score": t.score,
                     "details": t.details,
                     "duration_ms": t.duration_ms,
+                    "standards": standards_for(t.test_name),
                 }
                 for t in tests
             ]
+
+        # Standards coverage: which external controls / frameworks the agent
+        # was measured against, and whether it passes them.
+        standards_coverage, frameworks = self._standards_coverage(test_results)
 
         test_date = datetime.utcnow().isoformat() + "Z"
         valid_until = (datetime.utcnow() + timedelta(days=settings.certification_expiry_days)).isoformat() + "Z"
@@ -139,6 +147,8 @@ class ReportGenerator:
             "warnings": warnings,
             "recommendations": recommendations,
             "test_details": test_details,
+            "standards_coverage": standards_coverage,
+            "frameworks": frameworks,
             "certification_valid_until": valid_until,
             "total_tests": len(test_results),
             "passed_tests": sum(1 for t in test_results if t.status.value == "pass"),
@@ -146,6 +156,81 @@ class ReportGenerator:
             "warning_tests": sum(1 for t in test_results if t.status.value == "warning"),
             "skipped_tests": sum(1 for t in test_results if t.status.value == "skip"),
         }
+
+    @staticmethod
+    def _worst_status(current: str, incoming: str) -> str:
+        """Combine two statuses keeping the most severe (fail > warning > pass > skip)."""
+        severity = {"fail": 3, "warning": 2, "pass": 1, "skip": 0}
+        return incoming if severity.get(incoming, 0) > severity.get(current, 0) else current
+
+    def _standards_coverage(self, test_results: List[TestResult]):
+        """Aggregate results per standard control and per framework.
+
+        Returns (coverage, frameworks) where coverage is a list of per-control
+        objects (ranked most-severe first) and frameworks is a per-framework
+        rollup. A control's status is the most severe status among the tests
+        mapped to it, so a single failing test flags the whole control.
+        """
+        by_code: dict = {}
+        for tr in test_results:
+            for code in TEST_STANDARDS.get(tr.test_name, []):
+                entry = by_code.setdefault(code, {
+                    "status": "skip", "scores": [],
+                    "passed": 0, "failed": 0, "warnings": 0, "skipped": 0,
+                    "tests": [],
+                })
+                status = tr.status.value
+                entry["status"] = self._worst_status(entry["status"], status)
+                entry["scores"].append(tr.score)
+                entry["tests"].append(f"{tr.category}/{tr.test_name}")
+                key = {"pass": "passed", "fail": "failed",
+                       "warning": "warnings", "skip": "skipped"}.get(status)
+                if key:
+                    entry[key] += 1
+
+        coverage = []
+        for code, e in by_code.items():
+            ref = resolve_standard(code)
+            scores = e["scores"]
+            coverage.append({
+                **ref,
+                "status": e["status"],
+                "score": round(sum(scores) / len(scores), 1) if scores else 0.0,
+                "passed": e["passed"],
+                "failed": e["failed"],
+                "warnings": e["warnings"],
+                "skipped": e["skipped"],
+                "total": len(scores),
+                "tests": sorted(set(e["tests"])),
+            })
+
+        severity = {"fail": 3, "warning": 2, "pass": 1, "skip": 0}
+        coverage.sort(key=lambda c: (-severity.get(c["status"], 0), c["framework"], c["code"]))
+
+        # Per-framework rollup
+        fw: dict = {}
+        for c in coverage:
+            f = fw.setdefault(c["framework"], {
+                "framework": c["framework"], "url": c["url"],
+                "controls": 0, "passed": 0, "failed": 0, "warnings": 0, "scores": [],
+            })
+            f["controls"] += 1
+            f["scores"].append(c["score"])
+            if c["status"] == "fail":
+                f["failed"] += 1
+            elif c["status"] == "warning":
+                f["warnings"] += 1
+            elif c["status"] == "pass":
+                f["passed"] += 1
+
+        frameworks = []
+        for f in fw.values():
+            scores = f.pop("scores")
+            f["score"] = round(sum(scores) / len(scores), 1) if scores else 0.0
+            frameworks.append(f)
+        frameworks.sort(key=lambda f: (-f["failed"], -f["warnings"], f["framework"]))
+
+        return coverage, frameworks
 
     def _generate_recommendations(
         self, category_scores: dict, critical_issues: list, warnings: list

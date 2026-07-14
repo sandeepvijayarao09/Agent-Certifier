@@ -67,4 +67,5 @@ async def get_certificate(agent_id: str, db: AsyncSession = Depends(get_db)):
         },
         "issued_by": "Agent Certifier Platform",
         "certificate_id": f"CERT-{agent.id[:8].upper()}",
+        "frameworks": report["frameworks"],
     }

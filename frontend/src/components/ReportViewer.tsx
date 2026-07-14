@@ -1,10 +1,10 @@
 'use client';
 
-import { CheckCircle, XCircle, AlertTriangle, Download, Award } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Download, Award, ShieldCheck, ExternalLink } from 'lucide-react';
 import { CertificationBadge } from '@/components/CertificationBadge';
 import { ScoreGauge } from '@/components/ScoreGauge';
 import { Progress } from '@/components/ui/Progress';
-import type { Report } from '@/lib/types';
+import type { Report, TestStatus } from '@/lib/types';
 
 interface ReportViewerProps {
   report: Report;
@@ -17,6 +17,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   informatics: 'Informatics',
   compliance: 'Compliance',
   ethics: 'Ethics',
+};
+
+const STATUS_STYLE: Record<TestStatus, string> = {
+  pass: 'text-green-400 bg-green-900/20 border-green-700/30',
+  fail: 'text-red-400 bg-red-900/20 border-red-700/30',
+  warning: 'text-yellow-400 bg-yellow-900/20 border-yellow-700/30',
+  skip: 'text-slate-400 bg-slate-800/40 border-slate-700/30',
 };
 
 export function ReportViewer({ report }: ReportViewerProps) {
@@ -107,6 +114,69 @@ export function ReportViewer({ report }: ReportViewerProps) {
         </div>
       </div>
 
+      {/* Standards Coverage */}
+      {report.standards_coverage?.length > 0 && (
+        <div className="bg-slate-900 border border-slate-700/50 rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-slate-100 mb-1 flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-blue-400" />
+            Standards Coverage
+          </h3>
+          <p className="text-sm text-slate-400 mb-4">
+            Evaluated against {report.standards_coverage.length} controls across{' '}
+            {report.frameworks.length} recognized frameworks.
+          </p>
+
+          {/* Per-framework rollup */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+            {report.frameworks.map((f) => (
+              <div key={f.framework} className="bg-slate-800/40 border border-slate-700/40 rounded-lg p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-200 leading-snug">
+                    {f.url ? (
+                      <a href={f.url} target="_blank" rel="noreferrer" className="hover:text-blue-300 inline-flex items-center gap-1">
+                        {f.framework}
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                      </a>
+                    ) : (
+                      f.framework
+                    )}
+                  </span>
+                  <span className="text-sm font-bold text-slate-100 flex-shrink-0">{f.score}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-500 mt-2">
+                  <span className="text-green-400">{f.passed}✓</span>
+                  <span className="text-red-400">{f.failed}✗</span>
+                  <span className="text-yellow-400">{f.warnings}!</span>
+                  <span className="ml-auto">{f.controls} controls</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Per-control detail (ranked most-severe first) */}
+          <div className="space-y-1.5">
+            {report.standards_coverage.map((c) => (
+              <div
+                key={c.code}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/30"
+              >
+                <span className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded border ${STATUS_STYLE[c.status]}`}>
+                  {c.code}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm text-slate-200">{c.title}</span>
+                  <span className="text-xs text-slate-500 ml-2 hidden sm:inline">{c.framework}</span>
+                </div>
+                <span className={`text-xs font-medium uppercase ${STATUS_STYLE[c.status].split(' ')[0]}`}>
+                  {c.status}
+                </span>
+                <span className="text-sm font-bold text-slate-300 w-10 text-right">{Math.round(c.score)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Critical Issues */}
       {report.critical_issues.length > 0 && (
         <div className="bg-slate-900 border border-red-700/30 rounded-xl p-6">
@@ -125,6 +195,19 @@ export function ReportViewer({ report }: ReportViewerProps) {
                     <p className="text-xs text-slate-400 mt-0.5">
                       {String(issue.details?.message || 'No details available')}
                     </p>
+                    {issue.standards && issue.standards.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {issue.standards.map((s) => (
+                          <span
+                            key={s.code}
+                            title={`${s.title} — ${s.framework}`}
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-red-950/40 border border-red-800/40 text-red-300"
+                          >
+                            {s.code}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <span className="text-sm font-bold text-red-400 flex-shrink-0">
                     {Math.round(issue.score)}
@@ -154,6 +237,19 @@ export function ReportViewer({ report }: ReportViewerProps) {
                     <p className="text-xs text-slate-400 mt-0.5">
                       {String(w.details?.message || '')}
                     </p>
+                    {w.standards && w.standards.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {w.standards.map((s) => (
+                          <span
+                            key={s.code}
+                            title={`${s.title} — ${s.framework}`}
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-yellow-950/40 border border-yellow-800/40 text-yellow-300"
+                          >
+                            {s.code}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <span className="text-sm font-bold text-yellow-400 flex-shrink-0">
                     {Math.round(w.score)}

@@ -64,12 +64,41 @@ export interface CategoryScore {
   total: number;
 }
 
+export interface StandardRef {
+  code: string;
+  framework: string;
+  title: string;
+  url: string;
+}
+
+export interface StandardCoverage extends StandardRef {
+  status: TestStatus;
+  score: number;
+  passed: number;
+  failed: number;
+  warnings: number;
+  skipped: number;
+  total: number;
+  tests: string[];
+}
+
+export interface FrameworkCoverage {
+  framework: string;
+  url: string;
+  controls: number;
+  passed: number;
+  failed: number;
+  warnings: number;
+  score: number;
+}
+
 export interface ReportTestDetail {
   test_name: string;
   status: TestStatus;
   score: number;
   details: Record<string, unknown>;
   duration_ms: number;
+  standards?: StandardRef[];
 }
 
 export interface Report {
@@ -87,15 +116,19 @@ export interface Report {
     test_name: string;
     score: number;
     details: Record<string, unknown>;
+    standards?: StandardRef[];
   }>;
   warnings: Array<{
     category: string;
     test_name: string;
     score: number;
     details: Record<string, unknown>;
+    standards?: StandardRef[];
   }>;
   recommendations: string[];
   test_details: Record<string, ReportTestDetail[]>;
+  standards_coverage: StandardCoverage[];
+  frameworks: FrameworkCoverage[];
   certification_valid_until: string;
   total_tests: number;
   passed_tests: number;
@@ -148,4 +181,5 @@ export interface Certificate {
   category_scores: Record<string, number>;
   issued_by: string;
   certificate_id: string;
+  frameworks: FrameworkCoverage[];
 }
