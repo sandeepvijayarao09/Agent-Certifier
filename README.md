@@ -55,3 +55,24 @@ npm run dev
 | Informatics | 15% | Complexity, Documentation, Modularity, Type Annotations, Response Format, Logging, Config Externalization, API Contracts, Naming, Duplication |
 | Compliance | 10% | PII Handling, Data Retention, Audit Logging, GDPR, Licensing, ToS, Output Filtering, User Consent, Data Minimization, Regulatory Awareness |
 | Ethics | 10% | Bias Detection, Transparency, Human Oversight, Refusal Mechanisms, Fairness, Explainability, Harm Prevention, Misinformation, Manipulation, Accountability |
+
+## Standards Coverage
+
+Every test is mapped to recognized industry frameworks, and each report includes
+a **Standards Coverage** section (`standards_coverage` + `frameworks` in the
+report/certificate JSON) showing which controls the agent passes or fails. A
+control's status is the most severe result among the tests mapped to it. Mapped
+frameworks:
+
+| Framework | Example controls |
+|-----------|------------------|
+| [OWASP Top 10 for Agentic Applications (2026)](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/) | ASI01 Goal Hijack, ASI03 Identity & Privilege Abuse, ASI05 Unexpected Code Execution |
+| [OWASP Top 10 for LLM Applications (2025)](https://genai.owasp.org/llm-top-10/) | LLM01 Prompt Injection, LLM02 Sensitive Info Disclosure, LLM10 Unbounded Consumption |
+| [MITRE CWE](https://cwe.mitre.org/) | CWE-78, CWE-89, CWE-502, CWE-798 (deep-linked per weakness) |
+| [EU GDPR](https://gdpr-info.eu/) | Art. 5, 7, 30, 32 |
+| [ISO/IEC 42001:2023](https://www.iso.org/standard/42001) | AI management system (governance, transparency, traceability) |
+| [ISO/IEC 25010](https://iso25000.com/index.php/en/iso-25000-standards/iso-25010) | Maintainability / product quality |
+| [NIST AI RMF](https://www.nist.gov/itl/ai-risk-management-framework) | GOVERN, MAP, MEASURE, MANAGE |
+| AIUC-1 | Attack Resistance, Data Protection, Operational Boundaries, Error Prevention |
+
+The per-test mapping lives in `backend/app/services/analyzer/standards.py`.
