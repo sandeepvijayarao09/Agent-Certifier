@@ -4,6 +4,7 @@ from app.models.agent import Agent
 from app.models.test_result import TestResult
 from app.core.config import settings
 from app.services.analyzer.standards import TEST_STANDARDS, resolve_standard, standards_for
+from app.services.analyzer.agentic import analyze_agentic
 
 
 CATEGORY_WEIGHTS = {
@@ -126,9 +127,21 @@ class ReportGenerator:
                 for t in tests
             ]
 
+        # Agentic governance lane (advisory; does not change the weighted score).
+        # Runs on the stored source at report time and covers the OWASP Agentic
+        # controls the source-regex tests can't reach (ASI02/03/04/07, LLM06).
+        agentic_findings = analyze_agentic(
+            getattr(agent, "file_content", "") or "", agent.language, agent.filename
+        )
+        agentic_extra = [
+            (s["code"], f["status"], f"agentic/{f['id']}", f["score"])
+            for f in agentic_findings
+            for s in f["standards"]
+        ]
+
         # Standards coverage: which external controls / frameworks the agent
         # was measured against, and whether it passes them.
-        standards_coverage, frameworks = self._standards_coverage(test_results)
+        standards_coverage, frameworks = self._standards_coverage(test_results, agentic_extra)
 
         test_date = datetime.utcnow().isoformat() + "Z"
         valid_until = (datetime.utcnow() + timedelta(days=settings.certification_expiry_days)).isoformat() + "Z"
@@ -149,6 +162,7 @@ class ReportGenerator:
             "test_details": test_details,
             "standards_coverage": standards_coverage,
             "frameworks": frameworks,
+            "agentic_governance": agentic_findings,
             "certification_valid_until": valid_until,
             "total_tests": len(test_results),
             "passed_tests": sum(1 for t in test_results if t.status.value == "pass"),
@@ -163,30 +177,40 @@ class ReportGenerator:
         severity = {"fail": 3, "warning": 2, "pass": 1, "skip": 0}
         return incoming if severity.get(incoming, 0) > severity.get(current, 0) else current
 
-    def _standards_coverage(self, test_results: List[TestResult]):
+    def _standards_coverage(self, test_results: List[TestResult], extra=None):
         """Aggregate results per standard control and per framework.
 
         Returns (coverage, frameworks) where coverage is a list of per-control
         objects (ranked most-severe first) and frameworks is a per-framework
         rollup. A control's status is the most severe status among the tests
         mapped to it, so a single failing test flags the whole control.
+
+        ``extra`` optionally folds in non-test evidence (e.g. agentic-governance
+        findings) as ``(code, status, label, score)`` tuples.
         """
         by_code: dict = {}
+        status_key = {"pass": "passed", "fail": "failed",
+                      "warning": "warnings", "skip": "skipped"}
+
+        def add(code: str, status: str, label: str, score: float):
+            entry = by_code.setdefault(code, {
+                "status": "skip", "scores": [],
+                "passed": 0, "failed": 0, "warnings": 0, "skipped": 0,
+                "tests": [],
+            })
+            entry["status"] = self._worst_status(entry["status"], status)
+            entry["scores"].append(score)
+            entry["tests"].append(label)
+            key = status_key.get(status)
+            if key:
+                entry[key] += 1
+
         for tr in test_results:
             for code in TEST_STANDARDS.get(tr.test_name, []):
-                entry = by_code.setdefault(code, {
-                    "status": "skip", "scores": [],
-                    "passed": 0, "failed": 0, "warnings": 0, "skipped": 0,
-                    "tests": [],
-                })
-                status = tr.status.value
-                entry["status"] = self._worst_status(entry["status"], status)
-                entry["scores"].append(tr.score)
-                entry["tests"].append(f"{tr.category}/{tr.test_name}")
-                key = {"pass": "passed", "fail": "failed",
-                       "warning": "warnings", "skip": "skipped"}.get(status)
-                if key:
-                    entry[key] += 1
+                add(code, tr.status.value, f"{tr.category}/{tr.test_name}", tr.score)
+
+        for code, status, label, score in (extra or []):
+            add(code, status, label, score)
 
         coverage = []
         for code, e in by_code.items():

@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle, XCircle, AlertTriangle, Download, Award, ShieldCheck, ExternalLink } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Download, Award, ShieldCheck, ExternalLink, Bot } from 'lucide-react';
 import { CertificationBadge } from '@/components/CertificationBadge';
 import { ScoreGauge } from '@/components/ScoreGauge';
 import { Progress } from '@/components/ui/Progress';
@@ -113,6 +113,51 @@ export function ReportViewer({ report }: ReportViewerProps) {
           ))}
         </div>
       </div>
+
+      {/* Agentic Governance */}
+      {report.agentic_governance?.length > 0 && (
+        <div className="bg-slate-900 border border-purple-700/30 rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-purple-300 mb-1 flex items-center gap-2">
+            <Bot className="w-5 h-5" />
+            Agentic Governance ({report.agentic_governance.length})
+          </h3>
+          <p className="text-sm text-slate-400 mb-4">
+            Agent-specific risks (tool exposure, identity/scope, supply chain, inter-agent
+            comms) beyond the static source scan.
+          </p>
+          <div className="space-y-2">
+            {report.agentic_governance.map((f) => (
+              <div key={f.id} className="bg-slate-800/30 border border-slate-700/30 rounded-lg px-4 py-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${STATUS_STYLE[f.status]}`}>
+                        {f.status}
+                      </span>
+                      <span className="text-sm font-medium text-slate-200">{f.title}</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">{f.message}</p>
+                    {f.evidence && (
+                      <code className="text-[11px] text-slate-500 mt-1 block truncate font-mono">{f.evidence}</code>
+                    )}
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {f.standards.map((s) => (
+                        <span
+                          key={s.code}
+                          title={`${s.title} — ${s.framework}`}
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-950/40 border border-purple-800/40 text-purple-300"
+                        >
+                          {s.code}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Standards Coverage */}
       {report.standards_coverage?.length > 0 && (
