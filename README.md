@@ -45,6 +45,22 @@ npm run dev
 - **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
 - **Analysis**: Static code analysis using regex patterns and heuristics (no code execution)
 
+## Testing
+
+**Backend** (pytest — API flow, hardening, orchestrator, standards, agentic lane):
+```bash
+cd backend
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
+
+**Frontend** (type check + production build):
+```bash
+cd frontend
+npm install
+npx tsc --noEmit && npm run build
+```
+
 ## Test Categories
 
 | Category | Weight | Tests |
