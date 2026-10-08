@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     max_upload_size: int = 10 * 1024 * 1024  # 10MB
     allowed_extensions: List[str] = [
         ".py", ".js", ".ts", ".go", ".java", ".rb", ".rs",
-        ".cpp", ".cc", ".cs", ".php"
+        ".cpp", ".cc", ".cs", ".php",
+        ".json",  # A2A Agent Cards / MCP server configs (agentic lane)
     ]
     certification_expiry_days: int = 365
     # Hardening knobs

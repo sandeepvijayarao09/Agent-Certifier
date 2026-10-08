@@ -11,12 +11,12 @@ interface AgentUploaderProps {
   onUploadComplete?: (agent: Agent) => void;
 }
 
-const ALLOWED_EXTENSIONS = ['.py', '.js', '.ts', '.go', '.java', '.rb', '.rs', '.cpp', '.cc', '.cs', '.php'];
+const ALLOWED_EXTENSIONS = ['.py', '.js', '.ts', '.go', '.java', '.rb', '.rs', '.cpp', '.cc', '.cs', '.php', '.json'];
 
 const LANGUAGE_ICONS: Record<string, string> = {
   '.py': '🐍', '.js': '🟨', '.ts': '🔷', '.go': '🔵',
   '.java': '☕', '.rb': '💎', '.rs': '🦀', '.cpp': '⚙️',
-  '.cc': '⚙️', '.cs': '🔵', '.php': '🐘',
+  '.cc': '⚙️', '.cs': '🔵', '.php': '🐘', '.json': '📄',
 };
 
 export function AgentUploader({ onUploadComplete }: AgentUploaderProps) {

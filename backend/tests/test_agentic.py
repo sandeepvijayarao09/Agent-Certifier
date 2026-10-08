@@ -54,3 +54,10 @@ def test_non_agent_report_has_no_agentic_section(run_agent):
     assert rep["agentic_governance"] == []
     labels = [t for c in rep["standards_coverage"] for t in c["tests"]]
     assert not any(t.startswith("agentic/") for t in labels)
+
+
+def test_agent_card_json_upload_is_analyzed(run_agent):
+    _, resp = run_agent("agent_card.json", AGENT_CARD_JSON)
+    rep = resp.json()
+    ids = {f["id"] for f in rep["agentic_governance"]}
+    assert "agentcard_no_auth" in ids

@@ -34,6 +34,7 @@ LANGUAGE_MAP = {
     ".cc": "C++",
     ".cs": "C#",
     ".php": "PHP",
+    ".json": "JSON",
 }
 
 
