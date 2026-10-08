@@ -1,0 +1,9 @@
+{
+  "name": "billing-agent",
+  "description": "Creates and looks up invoices for other agents",
+  "url": "http://billing.internal/a2a",
+  "version": "1.0.0",
+  "capabilities": {"streaming": true},
+  "skills": [{"id": "invoice", "name": "Create invoice"}],
+  "defaultInputModes": ["text"]
+}
